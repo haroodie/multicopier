@@ -5,7 +5,6 @@ import 'destination_folder.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -27,8 +26,9 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _fromDir = prefs.getString('fromDir') ?? '';
-      List<String> destinationPaths = prefs.getStringList('destinationPaths') ?? [];
-      for (var path in destinationPaths){
+      List<String> destinationPaths =
+          prefs.getStringList('destinationPaths') ?? [];
+      for (var path in destinationPaths) {
         _destinations.add(DestinationFolder(path: path, enabled: false));
       }
     });
@@ -57,13 +57,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   void addFromDir() async {
-    final file = await openFile();
+    final directoryPath = await getDirectoryPath();
     final prefs = await SharedPreferences.getInstance();
-    if (file != null) {
-      if (isFolderInstance(file.path) && !destinationExists(file.path)) {
-        prefs.setString('fromDir', file.path);
+    if (directoryPath != null) {
+      if (isFolderInstance(directoryPath) &&
+          !destinationExists(directoryPath)) {
+        prefs.setString('fromDir', directoryPath);
         setState(() {
-          _fromDir = file.path;
+          _fromDir = directoryPath;
         });
       }
     }
@@ -71,16 +72,20 @@ class _HomePageState extends State<HomePage> {
 
   void cacheDestinations() async {
     final prefs = await SharedPreferences.getInstance();
-    prefs.setStringList('destinationPaths', _destinations.map((destination) => destination.path).toList());
+    prefs.setStringList('destinationPaths',
+        _destinations.map((destination) => destination.path).toList());
   }
 
   void addDestination() async {
     resetProgress();
-    final openedFiles = await openFiles();
+    final directoryPath = await getDirectoryPath();
     setState(() {
-      for (var file in openedFiles) {
-        if (isFolderInstance(file.path) && file.path != _fromDir && !destinationExists(file.path)) {
-          _destinations.add(DestinationFolder(path: file.path, enabled: true));
+      if (directoryPath != null) {
+        if (isFolderInstance(directoryPath) &&
+            directoryPath != _fromDir &&
+            !destinationExists(directoryPath)) {
+          _destinations
+              .add(DestinationFolder(path: directoryPath, enabled: true));
         }
       }
     });
@@ -95,7 +100,7 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void toggleEnabled(DestinationFolder destination, bool value){
+  void toggleEnabled(DestinationFolder destination, bool value) {
     resetProgress();
     setState(() {
       destination.toggleEnabled(value);
@@ -128,7 +133,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   String? getBaseName(parentPath, fullPath) {
-    return RegExp("$parentPath(.*)").firstMatch(fullPath)![1];
+    return RegExp("${RegExp.escape(parentPath)}(.*)").firstMatch(fullPath)![1];
   }
 
   void recursiveCopy(Directory from, String to) async {
@@ -160,47 +165,59 @@ class _HomePageState extends State<HomePage> {
       }
     }
     showCupertinoModalPopup<void>(
-      context: context,
-      builder: (BuildContext context) => CupertinoAlertDialog(
-        title: const Text('Процесс копирования завершен'),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Закрыть')
-          )
-        ],
-      )
-    );
+        context: context,
+        builder: (BuildContext context) => CupertinoAlertDialog(
+              title: const Text('Процесс копирования завершен'),
+              actions: [
+                CupertinoDialogAction(
+                    isDefaultAction: true,
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Закрыть'))
+              ],
+            ));
   }
 
   @override
   Widget build(BuildContext context) {
+    Color backgroundColor;
+    Color textColor;
+    if (MediaQuery.of(context).platformBrightness == Brightness.dark) {
+      backgroundColor = CupertinoColors.black;
+      textColor = CupertinoColors.white;
+    } else {
+      backgroundColor = CupertinoColors.systemGroupedBackground;
+      textColor = CupertinoColors.black;
+    }
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text('Копирование содержимого $_fromDir'),
         trailing: GestureDetector(
           onTap: addFromDir,
-          child: const Text('Выбрать', style: TextStyle(color: CupertinoColors.activeBlue)),
+          child: const Text('Выбрать',
+              style: TextStyle(color: CupertinoColors.activeBlue)),
         ),
       ),
-      child: SafeArea(child:
-        Column(
+      child: SafeArea(
+        child: Column(
           children: [
             Container(
-              color: CupertinoColors.systemGroupedBackground,
-              child: Row(
-                children: [
-                  const Text('Куда скопировать'),
-                  CupertinoButton(
-                    onPressed: (_fromDir != '') ? addDestination : null,
-                    child: const Text('Добавить папки'),
-                  ),
-                ]
-              ),
+              color: backgroundColor,
+              child: Row(children: [
+                Text(
+                  'Куда скопировать',
+                  style: TextStyle(color: textColor),
+                ),
+                CupertinoButton(
+                  onPressed: (_fromDir != '') ? addDestination : null,
+                  child: const Text('Добавить папки'),
+                ),
+              ]),
             ),
             if (_destinations.isEmpty) ...[
-              const Expanded(child: Center(child: Text('Не выбрано, куда копировать файлы'),))
+              const Expanded(
+                  child: Center(
+                child: Text('Не выбрано, куда копировать файлы'),
+              ))
             ] else ...[
               if (anyDisabled())
                 Align(
@@ -211,29 +228,29 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               Expanded(
-                child: ListView(
-                  children:[
-                    CupertinoListSection(children: [
-                      for (var destination in _destinations)
-                        DestinationRow(
-                          destination: destination,
-                          enabled: destination.enabled,
-                          transferInProgress: destination.transferInProgress,
-                          transferComplete: destination.transferComplete,
-                          onEnabledToggle: (value) => toggleEnabled(destination, value),
-                          onDeleteAction: deleteDestination
-                        )
-                    ])
-                  ]
-                )
-              ),
+                  child: ListView(children: [
+                CupertinoListSection(children: [
+                  for (var destination in _destinations)
+                    DestinationRow(
+                        destination: destination,
+                        enabled: destination.enabled,
+                        transferInProgress: destination.transferInProgress,
+                        transferComplete: destination.transferComplete,
+                        onEnabledToggle: (value) =>
+                            toggleEnabled(destination, value),
+                        onDeleteAction: deleteDestination)
+                ])
+              ])),
             ],
             Container(
-              color: CupertinoColors.systemGroupedBackground,
+              color: backgroundColor,
               child: Center(
                 child: CupertinoButton.filled(
-                  onPressed: (_fromDir != '' && _destinations.isNotEmpty) ? () => copyFiles(context) : null,
-                  child: const Text('Запустить копирование'),
+                  onPressed: (_fromDir != '' && _destinations.isNotEmpty)
+                      ? () => copyFiles(context)
+                      : null,
+                  child: Text('Запустить копирование',
+                      style: TextStyle(color: textColor)),
                 ),
               ),
             )
